@@ -10,43 +10,39 @@ AMARELO = "\033[38;5;226m"
 RESET = "\033[0m"
 
 banner = r"""
-|------------------------------------------------------|
-|  ____                 _                     _        |
-| |  _ \ ___  _ __ ___ | |__   ___   ___ ___ | |_ ___  |
-| | |_) / _ \| '_ ` _ \| '_ \ / _ \ / __/ _ \| __/ _ \ |
-| |  __/ (_) | | | | | | |_) | (_) | (_| (_) | || (_) ||
-| |_|   \___/|_| |_| |_|_.__/ \___/ \___\___/ \__\___/ |
-|------------------------------------------------------|
+|------------------------------------------------------
+|  ____                 _                     _        
+| |  _ \ ___  _ __ ___ | |__   ___   ___ ___ | |_ ___  
+| | |_) / _ \| '_ ` _ \| '_ \ / _ \ / __/ _ \| __/ _ \ 
+| |  __/ (_) | | | | | | |_) | (_) | (_| (_) | || (_) |
+| |_|   \___/|_| |_| |_|_.__/ \___/ \___\___/ \__\___/ 
+|------------------------------------------------------
 """
 
 banner_gui = r"""
-|---------------------|
-|    ________  ______ |
-|   / ____/ / / /  _/ |
-|  / / __/ / / // /   |
-| / /_/ / /_/ // /    |
-| \____/\____/___/    |
-|---------------------|
+---------------------|
+    ________  ______ |
+   / ____/ / / /  _/ |
+  / / __/ / / // /   |
+ / /_/ / /_/ // /    |
+ \____/\____/___/    |
+---------------------|
  """                  
 
-banner_lines = [line.rstrip() for line in banner.strip().split('\n') if line.strip()]
-banner_gui_lines = [line.rstrip() for line in banner_gui.strip().split('\n') if line.strip()]
+banner_lines = [line.rstrip() for line in banner.splitlines() if line.strip()]
+banner_gui_lines = [line.rstrip() for line in banner_gui.splitlines() if line.strip()]
 
 max_banner_width = max(len(line) for line in banner_lines)
-max_gui_width = max(len(line) for line in banner_gui_lines)
 
 combined_lines = []
 for i in range(max(len(banner_lines), len(banner_gui_lines))):
     h = banner_lines[i] if i < len(banner_lines) else ''
     w = banner_gui_lines[i] if i < len(banner_gui_lines) else ''
-
     h_colored = f"{AMARELO}{h.ljust(max_banner_width)}{RESET}"
-    
-    w_colored = f"{VERMELHO}{w.ljust(max_gui_width)}{RESET}"
+    w_colored = f"{VERMELHO}{w}{RESET}"
+    combined_lines.append(h_colored + "" + w_colored)  # espaço entre eles
 
-    combined_lines.append(h_colored + "" + w_colored)
-
-print('\n'.join(combined_lines))
+print("\n".join(combined_lines))
 
 
 ip = input(f"{AMARELO}IP): {RESET}").strip()
@@ -123,5 +119,3 @@ print(f"{VERDE}conectando em {ip}:{porta_int}...\n{RESET}")
 #    print(f"{VERMELHO}erro ao executar o bat D: {e}{RESET}")
 
 print(f"{VERDE}\nSUCESSO! Arquivo salvo como: comandos.txt{RESET}")
-
-

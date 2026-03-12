@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Windows.Forms;
 using System.Threading;
 using static System.Runtime.InteropServices.JavaScript.JSType;
-
+//usei IA apenas na parte do descobrimento de IP!!
 namespace ola;
 
 public class Progam

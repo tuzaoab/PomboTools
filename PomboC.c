@@ -55,7 +55,7 @@ int main(void) {
 
 
 
-
+//c é top demais
 	case 3:
 		printf("PQ JOAO??\n\n");
 		printf("1- ELE E CUTE\n");
